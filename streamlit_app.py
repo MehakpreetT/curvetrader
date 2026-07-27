@@ -49,8 +49,8 @@ st.markdown("""
         }
         [data-testid="stMetric"]:hover {
             transform: translateY(-2px);
-            border-color: #3b82f6;
-            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.18);
+            border-color: #394152;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
         }
 
         .stButton>button {
@@ -66,14 +66,15 @@ st.markdown("""
         }
         .stButton>button:active { transform: translateY(0px); }
 
-        .stTabs [data-baseweb="tab-list"] { gap: 4px; }
+        .stTabs [data-baseweb="tab-list"] { gap: 2px; border-bottom: 1px solid #2b2f38; }
         .stTabs [data-baseweb="tab"] {
-            background-color: #171b24; border-radius: 8px 8px 0 0;
-            border: 1px solid #2b2f38; border-bottom: none;
-            color: #9aa0ab; padding: 8px 14px;
+            background-color: transparent; border: none;
+            color: #9aa0ab; padding: 10px 16px; font-weight: 500;
         }
+        .stTabs [data-baseweb="tab"]:hover { color: #e8eaed; }
         .stTabs [aria-selected="true"] {
-            background-color: #1d4ed8 !important; color: white !important;
+            color: #60a5fa !important; font-weight: 600;
+            border-bottom: 2px solid #60a5fa !important;
         }
 
         [data-testid="stExpander"] {
