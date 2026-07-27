@@ -27,18 +27,62 @@ st.set_page_config(page_title="SignalR", page_icon="🎯", layout="wide")
 st.markdown("""
     <style>
         .main { background: linear-gradient(160deg, #0a0e1a 0%, #0e1117 100%); }
-        h1, h2, h3 { color: #e8eaed; letter-spacing: -0.3px; }
+        h1, h2, h3 { letter-spacing: -0.3px; }
         h2, h3 { color: #60a5fa; }
         [data-testid="stHeaderActionElements"] { display: none; }
+
+        h1 {
+            background: linear-gradient(90deg, #60a5fa 0%, #a78bfa 50%, #60a5fa 100%);
+            background-size: 200% auto;
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text;
+            animation: shine 6s linear infinite;
+        }
+        @keyframes shine { to { background-position: 200% center; } }
+
         [data-testid="stMetricValue"] { color: #e8eaed; }
+        [data-testid="stMetricLabel"] { color: #9aa0ab; }
         [data-testid="stMetric"] {
             background: linear-gradient(160deg, #171b24 0%, #131722 100%);
             border: 1px solid #2b2f38; border-radius: 10px; padding: 12px 16px;
+            transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
         }
+        [data-testid="stMetric"]:hover {
+            transform: translateY(-2px);
+            border-color: #3b82f6;
+            box-shadow: 0 4px 16px rgba(59, 130, 246, 0.18);
+        }
+
         .stButton>button {
             background: linear-gradient(135deg, #2563eb, #3b82f6);
             color: white; border: none; border-radius: 8px; font-weight: 600;
+            padding: 0.5em 1.5em;
+            transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.2s ease;
         }
+        .stButton>button:hover {
+            background: linear-gradient(135deg, #1d4ed8, #2563eb);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 14px rgba(37, 99, 235, 0.35);
+        }
+        .stButton>button:active { transform: translateY(0px); }
+
+        .stTabs [data-baseweb="tab-list"] { gap: 4px; }
+        .stTabs [data-baseweb="tab"] {
+            background-color: #171b24; border-radius: 8px 8px 0 0;
+            border: 1px solid #2b2f38; border-bottom: none;
+            color: #9aa0ab; padding: 8px 14px;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: #1d4ed8 !important; color: white !important;
+        }
+
+        [data-testid="stExpander"] {
+            background: linear-gradient(160deg, #171b24 0%, #131722 100%);
+            border: 1px solid #2b2f38; border-radius: 10px;
+        }
+
+        [data-testid="stAppViewContainer"] { animation: fadeIn 0.35s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 """, unsafe_allow_html=True)
 
@@ -46,10 +90,12 @@ st.title("🎯 SignalR")
 st.caption("A personal trading signaler for bond derivatives — sentiment analysis, Monte Carlo simulation, and stress testing across options, swaps, and forwards.")
 
 BOND_ETFS = {
-    "TLT": {"name": "20+ Year Treasury Bond ETF", "duration": 17.0, "convexity": 4.0},
-    "IEF": {"name": "7-10 Year Treasury Bond ETF", "duration": 7.5, "convexity": 0.7},
-    "SHY": {"name": "1-3 Year Treasury Bond ETF", "duration": 1.9, "convexity": 0.05},
-    "TIP": {"name": "TIPS Bond ETF", "duration": 7.0, "convexity": 0.6},
+    "TLT": {"name": "20+ Year Treasury Bond ETF", "duration": 17.0, "convexity": 4.0, "category": "U.S. Treasury"},
+    "IEF": {"name": "7-10 Year Treasury Bond ETF", "duration": 7.5, "convexity": 0.7, "category": "U.S. Treasury"},
+    "SHY": {"name": "1-3 Year Treasury Bond ETF", "duration": 1.9, "convexity": 0.05, "category": "U.S. Treasury"},
+    "TIP": {"name": "TIPS Bond ETF", "duration": 7.0, "convexity": 0.6, "category": "U.S. Treasury"},
+    "LQD": {"name": "Investment-Grade Corporate Bond ETF", "duration": 8.5, "convexity": 0.9, "category": "Corporate"},
+    "HYG": {"name": "High-Yield Corporate Bond ETF", "duration": 3.5, "convexity": 0.2, "category": "Corporate"},
 }
 
 
@@ -108,6 +154,28 @@ def fetch_sofr():
         return float(d.iloc[-1].iloc[0]) / 100
     except Exception:
         return 0.045  # fallback assumption, disclosed in UI
+
+
+GOC_SERIES = {
+    "2Y": "BD.CDN.2YR.DQ.YLD", "3Y": "BD.CDN.3YR.DQ.YLD", "5Y": "BD.CDN.5YR.DQ.YLD",
+    "7Y": "BD.CDN.7YR.DQ.YLD", "10Y": "BD.CDN.10YR.DQ.YLD", "30Y": "BD.CDN.LONG.DQ.YLD",
+}
+
+
+@st.cache_data(ttl=60 * 60 * 6)
+def fetch_cad_curve():
+    import requests
+    curve = {}
+    for label, series in GOC_SERIES.items():
+        try:
+            resp = requests.get(f"https://www.bankofcanada.ca/valet/observations/{series}/json",
+                                 params={"recent": 1}, timeout=10)
+            resp.raise_for_status()
+            obs = resp.json()["observations"][-1]
+            curve[label] = float(obs[series]["v"]) / 100  # match fraction format used elsewhere
+        except Exception:
+            continue
+    return curve
 
 
 @st.cache_data(ttl=60 * 60 * 6)
@@ -317,8 +385,8 @@ def stress_test_forward(spot_price, repo_rate, time_to_delivery, price_shocks_pc
 # =======================================================================
 # 6. UI
 # =======================================================================
-ticker = st.selectbox("Choose a Treasury ETF", list(BOND_ETFS.keys()),
-                       format_func=lambda t: f"{t} — {BOND_ETFS[t]['name']}")
+ticker = st.selectbox("Choose a Bond ETF", list(BOND_ETFS.keys()),
+                       format_func=lambda t: f"{t} — {BOND_ETFS[t]['name']} ({BOND_ETFS[t]['category']})")
 etf_info = BOND_ETFS[ticker]
 
 data = fetch_underlying_data(ticker)
@@ -332,10 +400,13 @@ m2.metric("Annualized Volatility", f"{data['ann_vol']*100:.1f}%")
 m3.metric("Assumed Duration", f"{etf_info['duration']:.1f} yrs")
 m4.metric("Assumed Convexity", f"{etf_info['convexity']:.2f}")
 st.caption("Duration/convexity are standard published approximations for this ETF, not calculated live from its exact holdings.")
+if etf_info["category"] == "Corporate":
+    st.info("This is a corporate bond ETF — its price and yield reflect **credit risk** (the issuer's ability to pay) on top of interest rate risk, unlike Treasuries. The Monte Carlo simulation and duration/convexity math here only model rate risk, not credit/default risk.")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
     "Sentiment Analysis", "Monte Carlo Simulation", "Options Stress Test",
-    "Swap Stress Test", "Forward Stress Test", "Fixed Income Strategy", "Composite Signal", "Education"
+    "Swap Stress Test", "Forward Stress Test", "Fixed Income Strategy",
+    "Canadian Government Bonds", "Composite Signal", "Education"
 ])
 
 # --- TAB 1: SENTIMENT ---
@@ -533,8 +604,46 @@ with tab6:
     else:
         st.info("Not enough tenor data available on the Treasury curve right now to run roll-down analysis.")
 
-# --- TAB 7: COMPOSITE SIGNAL ---
+# --- TAB 7: CANADIAN GOVERNMENT BONDS ---
 with tab7:
+    st.subheader("Government of Canada Bond Curve")
+    st.caption("Live benchmark yields from the Bank of Canada's own Valet API — the same source used for the official policy rate.")
+
+    cad_curve = fetch_cad_curve()
+    us_curve_for_cad = fetch_treasury_curve()
+
+    if not cad_curve:
+        st.error("Couldn't fetch the Canadian curve right now — try again shortly.")
+    else:
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=list(cad_curve.keys()), y=[v * 100 for v in cad_curve.values()],
+                                  mode="lines+markers", name="Canada (GoC)",
+                                  line=dict(color="#f87171", width=3), marker=dict(size=8)))
+        fig.update_layout(xaxis_title="Tenor", yaxis_title="Yield (%)",
+                           paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)", font=dict(color="#e8eaed"))
+        st.plotly_chart(fig, use_container_width=True)
+
+        st.divider()
+        st.subheader("Canada vs. U.S. Spread")
+        common_tenors = [t for t in ["2Y", "5Y", "10Y", "30Y"] if t in cad_curve and t in us_curve_for_cad]
+        if common_tenors:
+            spread_rows = [{"Tenor": t, "Canada": f"{cad_curve[t]*100:.2f}%", "U.S.": f"{us_curve_for_cad[t]*100:.2f}%",
+                            "Spread (bps)": round((cad_curve[t] - us_curve_for_cad[t]) * 10000, 0)}
+                           for t in common_tenors]
+            st.dataframe(pd.DataFrame(spread_rows), use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.subheader("Canadian Roll-Down Analysis")
+        tenor_map_years_cad = {"2Y": 2, "3Y": 3, "5Y": 5, "7Y": 7, "10Y": 10, "30Y": 30}
+        available_cad_tenors = [tenor_map_years_cad[t] for t in cad_curve if t in tenor_map_years_cad]
+        if len(available_cad_tenors) >= 2:
+            rd_cad_df = rolldown_analysis(cad_curve, available_cad_tenors)
+            st.dataframe(rd_cad_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("Not enough tenor data available on the Canadian curve right now to run roll-down analysis.")
+
+# --- TAB 8: COMPOSITE SIGNAL ---
+with tab8:
     st.subheader(f"Composite Signal — {ticker}")
     st.caption("Combines sentiment, Monte Carlo expected outcome, and stress-test resilience into one view. This is a rules-based aggregation of the other tabs, not independent research.")
 
@@ -562,8 +671,8 @@ with tab7:
         getattr(st, color)(f"**Signal: {verdict}** for {ticker} — driven {'mostly by sentiment' if abs(sentiment['score']) > abs(expected_return*20) else 'mostly by the Monte Carlo projection'}.")
         st.caption("This signal is a simple weighted rule, built for illustration — not investment advice, and not a substitute for real research.")
 
-# --- TAB 8: EDUCATION ---
-with tab8:
+# --- TAB 9: EDUCATION ---
+with tab9:
     st.subheader("How Bonds Work")
     st.markdown("""
     A bond is a loan — you're lending money to a government or company, and they pay you back on a schedule.
