@@ -333,9 +333,9 @@ m3.metric("Assumed Duration", f"{etf_info['duration']:.1f} yrs")
 m4.metric("Assumed Convexity", f"{etf_info['convexity']:.2f}")
 st.caption("Duration/convexity are standard published approximations for this ETF, not calculated live from its exact holdings.")
 
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     "Sentiment Analysis", "Monte Carlo Simulation", "Options Stress Test",
-    "Swap Stress Test", "Forward Stress Test", "Fixed Income Strategy", "Composite Signal"
+    "Swap Stress Test", "Forward Stress Test", "Fixed Income Strategy", "Composite Signal", "Education"
 ])
 
 # --- TAB 1: SENTIMENT ---
@@ -438,7 +438,7 @@ with tab4:
     else:
         c1, c2, c3 = st.columns(3)
         with c1:
-            notional = st.number_input("Notional ($)", value=10_000_000.0, step=1_000_000.0)
+            notional = st.number_input("Notional ($)", value=10_000_000.0, max_value=10_000_000.0, step=1_000_000.0)
         with c2:
             fixed_rate = st.number_input("Fixed Rate (%)", value=curve.get("10Y", 0.04) * 100, step=0.1) / 100
         with c3:
@@ -496,7 +496,7 @@ with tab6:
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        face_value = st.number_input("Face Value ($)", value=1000.0, step=100.0)
+        face_value = st.number_input("Face Value ($)", value=1000.0, max_value=10_000_000.0, step=100.0)
     with c2:
         coupon_rate = st.number_input("Coupon Rate (%)", value=4.0, step=0.25) / 100
     with c3:
@@ -561,3 +561,90 @@ with tab7:
 
         getattr(st, color)(f"**Signal: {verdict}** for {ticker} — driven {'mostly by sentiment' if abs(sentiment['score']) > abs(expected_return*20) else 'mostly by the Monte Carlo projection'}.")
         st.caption("This signal is a simple weighted rule, built for illustration — not investment advice, and not a substitute for real research.")
+
+# --- TAB 8: EDUCATION ---
+with tab8:
+    st.subheader("How Bonds Work")
+    st.markdown("""
+    A bond is a loan — you're lending money to a government or company, and they pay you back on a schedule.
+    Every bond has four core parts:
+
+    - **Face Value (Par Value):** the amount you get back at maturity — the $1,000 or $10,000,000 you're owed at the end
+    - **Coupon Rate:** the fixed interest rate the bond pays, usually semi-annually, calculated on the face value
+    - **Maturity:** how many years until the bond repays its face value and stops paying coupons
+    - **Yield to Maturity (YTM):** the actual annualized return you'd earn holding the bond to maturity — this is
+      *not* the same as the coupon rate once the bond trades above or below its face value
+
+    **Why bond prices and yields move opposite each other:** a bond's coupon payments are fixed once issued. If new
+    bonds start being issued at a higher rate (because rates rose), your older, lower-coupon bond becomes less
+    attractive — the only way to make it competitive is for its *price* to fall, which raises its effective yield.
+    The reverse happens when rates fall: your fixed coupon becomes relatively more attractive, so the price rises.
+    This is the single most important relationship in fixed income: **yields up, prices down — yields down, prices up.**
+    """)
+
+    st.divider()
+    st.subheader("What Each Tab Actually Does")
+
+    with st.expander("Sentiment Analysis"):
+        st.markdown("""
+        Pulls recent news headlines for the selected Treasury ETF and scores them using rate/macro-relevant
+        keywords (dovish/hawkish, cut/hike, recession/growth, etc.). The idea: bond markets react heavily to
+        macro narrative and Fed commentary, often before it shows up in price — this is a rough, fast read on
+        which way the news flow is leaning, not a replacement for reading the actual articles.
+        """)
+
+    with st.expander("Monte Carlo Simulation"):
+        st.markdown("""
+        Most Monte Carlo tools simulate a stock-style random walk directly on price. This one simulates random
+        walks in **yield** instead (since that's the variable that actually moves independently for a bond), then
+        converts each simulated yield path into a price outcome using the bond's duration and convexity. Run
+        thousands of these paths and you get a full distribution of possible future prices — from which you can
+        read off Value at Risk (VaR) and the probability of a loss over your chosen time horizon.
+        """)
+
+    with st.expander("Options Stress Test"):
+        st.markdown("""
+        Treasury ETFs have real, exchange-listed options. This tab pulls the actual live chain (real strikes,
+        expiries, and implied volatility), then reprices your chosen contract under a range of underlying price
+        shocks using the Black-Scholes model — showing exactly how much an option's value would change if the ETF
+        moved up or down by a given amount before expiry.
+        """)
+
+    with st.expander("Swap Stress Test"):
+        st.markdown("""
+        Models a plain-vanilla fixed-for-floating interest rate swap: you receive a fixed rate and pay a floating
+        rate (or vice versa) on a notional amount. The fixed leg is valued by discounting its cash flows using the
+        real live Treasury curve; the floating leg is assumed to reprice to par (a standard simplification). The
+        stress scenarios show how the swap's mark-to-market value would change if the curve shifted up, down, or
+        changed shape (steepened/flattened) — exactly the kind of scenario a rates desk runs before putting on a
+        position. Note: this models the *mechanics* of a swap correctly, but real swap market rates are licensed
+        data this dashboard doesn't have access to — see the disclosure on that tab.
+        """)
+
+    with st.expander("Forward Stress Test"):
+        st.markdown("""
+        A forward contract locks in a price today for a bond delivered later. Its fair price is simply the
+        current spot price adjusted for the cost of carrying that position until delivery (the repo rate, here
+        proxied by SOFR). This tab shows how that forward price would change under different combinations of
+        underlying price moves and repo rate moves.
+        """)
+
+    with st.expander("Fixed Income Strategy (Duration, Convexity, Roll-Down)"):
+        st.markdown("""
+        - **Duration** answers: "how much does this bond's price move for a 1% change in yield?" Longer maturity
+          generally means higher duration means more price sensitivity.
+        - **Convexity** is the correction to that estimate — the price/yield relationship is actually curved, not
+          a straight line, and convexity captures how much it bends. It matters most for large yield moves.
+        - **Roll-down** is a strategy, not just a risk metric: if the yield curve is upward-sloping, a bond's yield
+          naturally falls as it "ages" toward a shorter maturity each year — and falling yield means rising price.
+          This tab estimates that return using the live Treasury curve, independent of any view on where rates
+          are headed.
+        """)
+
+    with st.expander("Composite Signal"):
+        st.markdown("""
+        A simple weighted combination of the sentiment score and the Monte Carlo's expected return, producing a
+        single Bullish/Neutral/Bearish read. It's deliberately transparent about being a basic rule (not a
+        sophisticated model) — the value is in seeing how the individual pieces roll up into one view, not in
+        treating the output as investment advice.
+        """)
